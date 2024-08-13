@@ -29,13 +29,13 @@ def get_ram_usage():
     return ram.percent
 
 def format_data(value, value_type):
-    date_str = datetime.datetime.now().strftime('%Y-%m-%d')
+    timestamp = datetime.datetime.now().strftime('%Y-%m-%d')
     if value_type == 'ram_usage':
-        return {date_str: f"ram:{value}%"}
+        return {timestamp: {'ram_medida': f"{value}%"}}
     elif value_type == 'temperature':
-        return {date_str: f"temp:{value}°C"}
+        return {timestamp: {'temp_medida': f"{value} °C"}}
     else:
-        return {date_str: f"data:{value}"}
+        return {timestamp: {'data': f"{value}"}}
 
 def send_to_firebase(data, path):
     try:
@@ -59,21 +59,36 @@ def send_to_firebase(data, path):
     except requests.exceptions.RequestException as e:
         print(f"Error enviando datos a Firebase: {e}")
 
+def check_script_status():
+    try:
+        # Consulta el estado del script en Firebase
+        url = f"{FIREBASE_URL}Control/Script.json"
+        response = requests.get(url)
+        response.raise_for_status()
+        script_status = response.json()
+        # Convertir el valor a booleano comparando con las cadenas "true" y "false"
+        return script_status.lower() == "true"
+    except requests.exceptions.RequestException as e:
+        print(f"Error consultando el estado del script en Firebase: {e}")
+        return False
+
 def monitor_system():
     while True:
-        cpu_temp = get_cpu_temperature()
-        ram_usage = get_ram_usage()
+        if check_script_status():
+            cpu_temp = get_cpu_temperature()
+            ram_usage = get_ram_usage()
 
-        if cpu_temp is not None and cpu_temp > TEMP_THRESHOLD:
-            formatted_temp = format_data(cpu_temp, 'temperature')
-            send_to_firebase(formatted_temp, 'temperaturas')
+            if cpu_temp is not None and cpu_temp > TEMP_THRESHOLD:
+                formatted_temp = format_data(cpu_temp, 'temperature')
+                send_to_firebase(formatted_temp, 'temperaturas')
 
-        if ram_usage > RAM_THRESHOLD:
-            formatted_ram = format_data(ram_usage, 'ram_usage')
-            send_to_firebase(formatted_ram, 'ram_usage')
+            if ram_usage > RAM_THRESHOLD:
+                formatted_ram = format_data(ram_usage, 'ram_usage')
+                send_to_firebase(formatted_ram, 'ram_usage')
 
         # Pausa de 2 segundos antes de la siguiente lectura
         time.sleep(2)
 
 if __name__ == "__main__":
     monitor_system()
+
