@@ -1,0 +1,53 @@
+import paho.mqtt.client as mqtt
+import datetime
+import time
+import psutil
+import clr
+
+# Configuración de MQTT
+MQTT_BROKER = 'localhost'  # Cambia esto a la dirección de tu broker MQTT
+MQTT_PORT = 1883
+MQTT_TOPIC_CPU_TEMP = 'system/cpu_temperature'
+MQTT_TOPIC_RAM_USAGE = 'system/ram_usage'
+
+# Inicializa el cliente MQTT
+client = mqtt.Client()
+client.connect(MQTT_BROKER, MQTT_PORT, 60)
+
+clr.AddReference('System.Management')
+from System.Management import ManagementObjectSearcher
+
+def get_cpu_temperature():
+    try:
+        searcher = ManagementObjectSearcher("root\\OpenHardwareMonitor", "SELECT * FROM Sensor WHERE SensorType='Temperature'")
+        for obj in searcher.Get():
+            if obj['Name'].startswith("CPU Package"):
+                return obj['Value']
+        return "No se pudo obtener la temperatura del procesador."
+    except Exception as e:
+        return str(e)
+
+def get_ram_usage():
+    ram = psutil.virtual_memory()
+    return ram.percent
+
+def publish_data():
+    while True:  # Bucle infinito para envíos continuos
+        timestamp = datetime.datetime.now()
+        cpu_temp = get_cpu_temperature()
+        ram_usage = get_ram_usage()
+
+        # Publicar los resultados en MQTT
+        client.publish(MQTT_TOPIC_CPU_TEMP, f"{timestamp.isoformat()} {cpu_temp}")
+        client.publish(MQTT_TOPIC_RAM_USAGE, f"{timestamp.isoformat()} {ram_usage}")
+
+        print(f"Timestamp: {timestamp}")
+        print(f"CPU Temperature: {cpu_temp} °C")
+        print(f"RAM Usage: {ram_usage} %")
+        print("-" * 50)
+
+        # Pausa de 2 segundos antes de tomar otra lectura
+        time.sleep(2)
+
+if __name__ == "__main__":
+    publish_data()
