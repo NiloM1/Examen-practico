@@ -5,10 +5,11 @@ import psutil
 import clr
 
 # Configuración de MQTT
-MQTT_BROKER = 'localhost'  # Cambia esto a la dirección de tu broker MQTT
+MQTT_BROKER = '192.168.18.55'  # Cambia esto a la dirección de tu broker MQTT
 MQTT_PORT = 1883
 MQTT_TOPIC_CPU_TEMP = 'system/cpu_temperature'
 MQTT_TOPIC_RAM_USAGE = 'system/ram_usage'
+MQTT_TOPIC_CONTROL = 'control/switch'  # Tema para el control del switch
 
 # Inicializa el cliente MQTT
 client = mqtt.Client()
@@ -16,6 +17,9 @@ client.connect(MQTT_BROKER, MQTT_PORT, 60)
 
 clr.AddReference('System.Management')
 from System.Management import ManagementObjectSearcher
+
+# Variable para controlar la captura de datos
+capture_data = True
 
 def get_cpu_temperature():
     try:
@@ -31,23 +35,43 @@ def get_ram_usage():
     ram = psutil.virtual_memory()
     return ram.percent
 
+# Callback para manejar mensajes MQTT
+def on_message(client, userdata, msg):
+    global capture_data
+    payload = msg.payload.decode().strip()
+    print(f"Mensaje recibido en tópico {msg.topic}: {payload}")
+    if msg.topic == MQTT_TOPIC_CONTROL:
+        if payload == "true":
+            capture_data = True
+            print("Captura de datos activada.")
+        elif payload == "false":
+            capture_data = False
+            print("Captura de datos desactivada.")
+
+# Configura el cliente MQTT para recibir mensajes
+client.on_message = on_message
+client.subscribe(MQTT_TOPIC_CONTROL)
+client.loop_start()
+
 def publish_data():
     while True:  # Bucle infinito para envíos continuos
-        timestamp = datetime.datetime.now()
-        cpu_temp = get_cpu_temperature()
-        ram_usage = get_ram_usage()
+        if capture_data:
+            timestamp = datetime.datetime.now()
+            cpu_temp = get_cpu_temperature()
+            ram_usage = get_ram_usage()
 
-        # Publicar los resultados en MQTT
-        client.publish(MQTT_TOPIC_CPU_TEMP, f"{timestamp.isoformat()} {cpu_temp}")
-        client.publish(MQTT_TOPIC_RAM_USAGE, f"{timestamp.isoformat()} {ram_usage}")
+            # Publicar los resultados en MQTT
+            client.publish(MQTT_TOPIC_CPU_TEMP, f"{timestamp.isoformat()} {cpu_temp} °C")
+            client.publish(MQTT_TOPIC_RAM_USAGE, f"{timestamp.isoformat()} {ram_usage} %")
 
-        print(f"Timestamp: {timestamp}")
-        print(f"CPU Temperature: {cpu_temp} °C")
-        print(f"RAM Usage: {ram_usage} %")
-        print("-" * 50)
+            print(f"Timestamp: {timestamp}")
+            print(f"CPU Temperature: {cpu_temp} °C")
+            print(f"RAM Usage: {ram_usage} %")
+            print("-" * 50)
 
         # Pausa de 2 segundos antes de tomar otra lectura
         time.sleep(2)
 
 if __name__ == "__main__":
     publish_data()
+
